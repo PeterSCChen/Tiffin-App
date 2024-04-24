@@ -33,7 +33,7 @@ export type RootStackParamList = {
   Signup: undefined;
   Main:
     | undefined
-    | { screen: keyof TabNavParamList; params?: { provider?: string } };
+    | { screen: keyof TabNavParamList; params?: { provider?: string }|never };
   Profile: undefined;
   Detail: undefined | { planId? : string };
   Checkout: undefined ;
