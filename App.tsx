@@ -25,7 +25,24 @@ import Checkout from "./screens/Checkout";
 import Home from "./screens/Home";
 import Provider from "./screens/Providers";
 import Plans from "./screens/Plans";
-import { ExportMealPlan } from "./types/dbExportMealPlans";
+import { FoodItem } from "./types/dbExportMealPlans";
+
+export interface CheckoutData {
+  mealPlanName: string;
+  description: string;
+  price: number;
+  selectedDate: string | null;
+  customerInfo: {
+    firstName: string;
+    lastName: string;
+    phoneNumber: string;
+    address: string;
+    postalCode: string;
+  };
+  foodItems: FoodItem[];
+  selectedItems: string[]; // Ensure this is included in the CheckoutData type
+}
+
 
 export type RootStackParamList = {
   First: undefined;
@@ -36,7 +53,7 @@ export type RootStackParamList = {
     | { screen: keyof TabNavParamList; params?: { provider?: string }|never };
   Profile: undefined;
   Detail: undefined | { planId? : string };
-  Checkout: undefined ;
+  Checkout: { checkoutData: CheckoutData };  // Updated to accept parameters
 };
 
 export type TabNavParamList = {

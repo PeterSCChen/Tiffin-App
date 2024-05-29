@@ -1,18 +1,20 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import {
   ScrollView,
-  Image,
   StyleSheet,
   Text,
   View,
   TouchableOpacity,
+  Modal,
+  TextInput,
+  Alert,
+  TextStyle,
 } from "react-native";
 import { StackNavigationProp } from "@react-navigation/stack";
 import { RootStackParamList, TabNavParamList } from "../App"; // Adjust the import path as needed
 import { useRoute, RouteProp, useNavigation } from "@react-navigation/native";
-import { format, addDays } from "date-fns";
-import CheckBox from "@react-native-community/checkbox";
-
+import { format, addDays, isSunday } from "date-fns";
+import RNPickerSelect from "react-native-picker-select";
 import {
   fetchFoodItems,
   fetchFoodItemDetails,
@@ -24,58 +26,46 @@ import {
   FoodItemType,
   DeliveryDays,
   DayOfWeek,
-  RadioGroupFoodItem,
 } from "../types/dbExportMealPlans";
 import { useAuth } from "../components/authContext";
+import CalendarPicker from "react-native-calendar-picker";
 
 type NavigationProp = StackNavigationProp<RootStackParamList>;
 type PlansRouteProp = RouteProp<TabNavParamList, "Plans">;
 
 const styles = StyleSheet.create({
-  container: {
-    flexGrow: 1,
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    padding: 10,
-    width: "100%",
-    paddingLeft: 30,
-  },
-  checkboxContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  radioContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  checkbox: {
-    width: 24,
-    height: 24,
-  },
-  radio: {
-    width: 24,
-    height: 24,
-  },
   mealPlanContainer: {
     padding: 10,
-    marginVertical: 5,
+    marginVertical: 50,
+    marginHorizontal: 20,
     borderWidth: 1,
     borderColor: "#FE7F00",
-    borderRadius: 5,
+    borderRadius: 10,
+    zIndex: 1,
+    overflow: "visible",
+  },
+  lineDivider: {
+    height: 1,
+    backgroundColor: "grey",
+    width: "100%",
+    marginVertical: 8,
+    zIndex: 2,
   },
   nameText: {
     fontWeight: "bold",
     fontSize: 24,
     marginBottom: 5,
+    textAlign: "center",
   },
   descriptionText: {
     fontSize: 16,
     color: "black",
     marginBottom: 5,
+    textAlign: "center",
   },
   priceText: {
     fontSize: 18,
-    color: "#black",
+    color: "black",
     marginBottom: 5,
     textAlign: "center",
   },
@@ -83,49 +73,24 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "black",
     marginBottom: 5,
-  },
-  mealPlanHeader: {
-    marginBottom: 20,
-  },
-  mealPlanName: {
-    fontWeight: "bold",
-    fontSize: 24,
-    marginBottom: 5,
-    color: "#FE7F00",
-  },
-  foodItemContainer: {
-    padding: 10,
-    marginVertical: 5,
-    borderWidth: 1,
-    borderColor: "#FE7F00",
-    borderRadius: 5,
-  },
-  optionalText: {
-    fontSize: 16,
-    color: "red",
-    marginBottom: 5,
+    textAlign: "center",
   },
   subHeader: {
     fontWeight: "bold",
     fontSize: 20,
     color: "#FE7F00",
     marginTop: 10,
-    marginBottom: 5,
-  },
-  lineDivider: {
-    height: 1,
-    backgroundColor: "grey",
-    width: "100%",
-    marginVertical: 8,
+    marginBottom: 10,
+    textAlign: "center",
   },
   checkoutButton: {
     backgroundColor: "#FE7F00",
-    padding: 10,
+    padding: 15,
     borderRadius: 5,
     alignItems: "center",
     justifyContent: "center",
     alignSelf: "center",
-    marginBottom: 20,
+    marginBottom: 10,
   },
   checkoutButtonText: {
     color: "white",
@@ -133,21 +98,21 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
   },
   selectionContainer: {
-    backgroundColor: "#f0f0f0", // A light grey background for the container
-    padding: 15,
+    backgroundColor: "#f0f0f0",
     borderRadius: 10,
+    borderColor: "#FE7F00",
     marginVertical: 20,
     alignSelf: "stretch",
   },
   optionContainer: {
-    flexDirection: "column", // This will stack the buttons vertically
-    alignItems: "flex-start", // Align items to the start of the cross axis
+    flexDirection: "column",
     paddingVertical: 10,
   },
   optionButton: {
-    flexDirection: "row", // Layout text next to the circle
-    alignItems: "center", // Center the text and circle vertically
-    marginBottom: 8, // Add some space between the buttons
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 8,
   },
   optionCircle: {
     marginRight: 10,
@@ -166,13 +131,154 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 2,
     borderColor: "#FE7F00",
-    backgroundColor: "#FE7F00", // Fill color for selected state
+    backgroundColor: "#FE7F00",
     justifyContent: "center",
     alignItems: "center",
+    zIndex: 3,
   },
   optionText: {
     fontSize: 16,
     color: "#333",
+    textAlign: "center",
+  },
+  pickerSelectContainer: {
+    borderWidth: 1,
+    borderColor: "gray",
+    borderRadius: 4,
+    padding: 10,
+    marginHorizontal: 20,
+  },
+  pickerSelectStyle: {
+    inputIOS: {
+      color: "black",
+      paddingTop: 13,
+      paddingHorizontal: 10,
+      paddingBottom: 12,
+    },
+    inputAndroid: {
+      color: "black",
+    },
+  } as TextStyle,
+  modalView: {
+    zIndex: 999,
+    flex: 2,
+    justifyContent: "center",
+    backgroundColor: "white",
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 7,
+  },
+  selectDateButton: {
+    borderWidth: 1,
+    borderColor: "black",
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+    borderRadius: 5,
+    alignSelf: "stretch",
+    marginLeft: 20,
+    marginRight: 20,
+    marginTop: 10,
+  },
+  selectDateText: {
+    color: "black",
+    fontSize: 18,
+    fontWeight: "bold",
+    textAlign: "left",
+  },
+  formButton: {
+    backgroundColor: "#FE7F00",
+    padding: 10,
+    borderRadius: 5,
+    alignItems: "center",
+    justifyContent: "center",
+    alignSelf: "center",
+    marginTop: 20,
+  },
+  formButtonText: {
+    color: "white",
+    fontSize: 18,
+    fontWeight: "bold",
+  },
+  centeredView: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 22,
+  },
+  openButton: {
+    backgroundColor: "#F194FF",
+    borderRadius: 20,
+    padding: 10,
+    elevation: 2,
+  },
+  textStyle: {
+    color: "white",
+    fontWeight: "bold",
+    textAlign: "center",
+  },
+  input: {
+    width: 300,
+    height: 40,
+    marginBottom: 20,
+    borderWidth: 1,
+  },
+  showFormButtonContainer: {
+    justifyContent: "center",
+    alignItems: "center",
+    marginVertical: 10,
+  },
+  showFormButton: {
+    backgroundColor: "transparent",
+    borderWidth: 1,
+    borderColor: "grey",
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 5,
+  },
+  showFormButtonText: {
+    fontSize: 16,
+    textAlign: "center",
+  },
+  checkoutConditions: {
+    textAlign: "center",
+    marginTop: 10,
+    color: "red",
+  },
+  specialRequestInput: {
+    height: 80,
+    borderColor: "gray",
+    borderWidth: 1,
+    marginTop: 10,
+    padding: 10,
+    textAlignVertical: "top",
+  },
+  deliveryInstructionInput: {
+    height: 80,
+    borderColor: "gray",
+    borderWidth: 1,
+    marginTop: 10,
+    padding: 10,
+    textAlignVertical: "top",
+  },
+  saveButton: {
+    backgroundColor: "#FE7F00",
+    padding: 10,
+    borderRadius: 5,
+    alignItems: "center",
+    justifyContent: "center",
+    alignSelf: "center",
+    marginTop: 20,
+  },
+  saveButtonText: {
+    color: "white",
+    fontSize: 18,
+    fontWeight: "bold",
   },
 });
 
@@ -184,25 +290,18 @@ function Detail() {
   const [foodItems, setFoodItems] = useState<FoodItem[]>([]);
   const [mealPlans, setMealPlans] = useState<ExportMealPlan[]>([]);
 
-  useEffect(() => {
-    fetchAllMealPlansAndFoodItems(planId ?? "");
-  });
-
-  const fetchAllMealPlansAndFoodItems = async (planId: string) => {
+  const fetchAllMealPlansAndFoodItems = useCallback(async (planId: string) => {
     if (planId) {
       try {
         const mealPlansData = await fetchMealPlansByPlanId(planId);
         const mealPlansWithFoodItems = await Promise.all(
           mealPlansData.map(async (mealPlan) => {
-            // Fetch food items for each meal plan
             const initialFoodItemsArray = await fetchFoodItems(
               mealPlan.foodItemsId as string
             );
 
-            // Fetch details for each food item and enrich the initial food items array
             const detailedFoodItems = await Promise.all(
               initialFoodItemsArray.map(async (foodItem: FoodItem) => {
-                // Handling "select" type food items that contain an items array
                 if (foodItem.type === "select" && foodItem.items) {
                   const enrichedSelectItems = await Promise.all(
                     foodItem.items.map(async (selectItem) => {
@@ -216,13 +315,11 @@ function Detail() {
                       };
                     })
                   );
-
                   return {
                     ...foodItem,
-                    items: enrichedSelectItems, // Attach enriched items array
+                    items: enrichedSelectItems,
                   };
                 } else {
-                  // For food items that directly contain a foodItemID
                   const foodItemDetails = await fetchFoodItemDetails(
                     String(foodItem.foodItemID)
                   );
@@ -235,7 +332,6 @@ function Detail() {
               })
             );
 
-            // Format description for each meal plan with its food items
             const formattedDescription = formatDescription(
               mealPlan,
               detailedFoodItems
@@ -252,15 +348,28 @@ function Detail() {
         const sortedMealPlans = sortMealPlans(
           mealPlansWithFoodItems.map((mealPlan) => ({
             ...mealPlan,
-            description: [mealPlan.description], // Convert description to an array of strings
+            description: [mealPlan.description],
           }))
         );
+
         setMealPlans(sortedMealPlans);
+        setFoodItems(
+          sortedMealPlans.flatMap((plan) => plan.foodItems).filter((item): item is FoodItem => item !== undefined) 
+        );
+
+        const hasSelectableItems = mealPlansWithFoodItems.some((mealPlan) =>
+          mealPlan.foodItems.some((item) => item.type === FoodItemType.SELECT)
+        );
+        setIsOptionSelected(!hasSelectableItems);
       } catch (error) {
         console.error("Failed to fetch meal plans or food items:", error);
       }
     }
-  };
+  }, []); 
+
+  useEffect(() => {
+    fetchAllMealPlansAndFoodItems(planId ?? ""); 
+  }, [planId]);
 
   const sortMealPlans = (mealPlans: ExportMealPlan[]) => {
     return mealPlans.sort((a: ExportMealPlan, b: ExportMealPlan) => {
@@ -282,7 +391,6 @@ function Detail() {
       if (a.subscriptionType !== "Trial" && b.subscriptionType === "Trial") {
         return 1;
       }
-      // If both have the same subscription type, then sort by price
       return a.price - b.price;
     });
   };
@@ -297,48 +405,23 @@ function Detail() {
     "Saturday",
   ];
 
-  // This function checks if a specific date should be disabled based on the selected meal plan's delivery days
-  const isDeliveryDayDisabled = (
-    date: Date,
-    planDeliveryDays: DeliveryDays
-  ) => {
-    const dayOfWeek: DayOfWeek = format(date, "EEEE") as DayOfWeek; // Ensure that the formatted string is a valid key
-    return !planDeliveryDays[dayOfWeek]; // Returns true if this day of the week is not a delivery day
-  };
-
-  const isPastNoon = () => {
-    const now = new Date();
-    return now.getHours() >= 12;
-  };
-
-  // Calculate the start date; if it's past noon, start from the next day
-  const startDate = addDays(new Date(), isPastNoon() ? 1 : 0);
-
-  // Calculate the end date; if it's past noon, add an extra day to the end date
-  const endDate = addDays(new Date(), isPastNoon() ? 9 : 8);
-
   const formatActiveDays = (activeDays: (keyof DeliveryDays)[]) => {
-    // Handling different cases based on the number of true days
     let daysDescription = "";
     let areDaysConsecutive = false;
     if (activeDays.length === 1) {
-      // If only one day is true, use the first 3 letters followed by "ONLY"
       daysDescription = `${activeDays[0].slice(0, 3)} ONLY`;
     } else if (activeDays.length === 2) {
-      // If two days are true, join them with a plus sign followed by "ONLY"
       daysDescription = `${activeDays
         .map((day) => day.slice(0, 3))
         .join(" + ")} ONLY`;
     } else {
-      // Check if the active days are consecutive
       areDaysConsecutive = activeDays.every((day, index) => {
-        if (index === 0) return true; // Always true for the first element
+        if (index === 0) return true;
         const prevDayIndex = daysOrder.indexOf(activeDays[index - 1]);
         const currDayIndex = daysOrder.indexOf(day);
         return currDayIndex - prevDayIndex === 1;
       });
 
-      // Format days by slicing the first three letters
       const formattedDays = activeDays.map((day) => day.slice(0, 3));
 
       if (areDaysConsecutive) {
@@ -398,58 +481,29 @@ function Detail() {
         }
         return description;
       })
-      .filter((desc) => desc !== "") // Filter out any empty descriptions
-      .join("\n"); // Use newline character to separate items
+      .filter((desc) => desc !== "")
+      .join("\n");
 
     return descriptions;
   };
 
-  const toggleOptionalSelection = (selectedItem: FoodItem) => {
-    // Map through the foodItems to update the isChecked property
-    const updatedFoodItems = foodItems?.map((item) => {
-      if (
-        item.name === selectedItem.name &&
-        item.type === FoodItemType.OPTIONAL
-      ) {
-        return {
-          ...item,
-          isSelected: !item.isSelected, // Toggle the isChecked property
-        };
-      }
-      return item;
-    });
-    // Update the foodItems state with the modified list
-    setFoodItems(updatedFoodItems);
-  };
-
-  const handleRadioGroupOptionChange = (
-    foodItem: FoodItem,
-    newValue: string
-  ) => {
-    // Map through the alternate array to update isSelected based on the newValue
-    const updatedRadioGroup =
-      foodItem.items?.map((altItem) => ({
-        ...altItem,
-        isSelected: altItem.name === newValue,
-      })) || [];
-
-    // Find and update the food item within the foodItems state
-    const updatedFoodItems = foodItems?.map((item) => {
-      if (item === foodItem) {
-        return {
-          ...item,
-          items: updatedRadioGroup,
-        };
+  const handleRadioGroupOptionChange = useCallback((foodItem: FoodItem, newValue: string) => {
+    const updatedFoodItems = foodItems.map(item => {
+      if (item.foodItemID === foodItem.foodItemID) {
+        const updatedItems = item.items?.map(altItem => ({
+          ...altItem,
+          isSelected: altItem.name === newValue,
+        }));
+        return { ...item, items: updatedItems };
       }
       return item;
     });
 
-    // Update the foodItems state with the modified food item
     setFoodItems(updatedFoodItems);
-  };
+    setIsOptionSelected(true);
+  }, [foodItems]);
 
   const formatDeliveryDays = (mealPlan: ExportMealPlan) => {
-    // Convert the planDeliveryDays object into an array of days that are true
     const activeDays = daysOrder.filter(
       (day) => mealPlan.planDeliveryDays[day]
     );
@@ -471,19 +525,102 @@ function Detail() {
     }
   };
 
-  const calculateTotalPrice = (price: number) => {
-    const subtotal = price;
-    const taxRate = 0.05; // Example tax rate of 7%
-    const tax = subtotal * taxRate;
-    const totalPrice = subtotal + tax;
+  const [date, setDate] = useState<Date | null>(null); 
+  const [isOptionSelected, setIsOptionSelected] = useState<boolean>(false);
+  const [isFormFilled, setIsFormFilled] = useState<boolean>(false);
+  const [isModalVisible, setModalVisible] = useState<boolean>(false);
 
-    return totalPrice.toFixed(2); // Return the total price with two decimal places
+  const isPastNoon = useMemo(() => new Date().getHours() >= 12, []);
+
+  const startDate = useMemo(
+    () => addDays(new Date(), isPastNoon ? 1 : 0),
+    [isPastNoon]
+  );
+  const endDate = useMemo(
+    () => addDays(new Date(), isPastNoon ? 9 : 8),
+    [isPastNoon]
+  );
+
+  const handleDateChange = (selectedDate: Date) => {
+    const newDate = new Date(selectedDate);
+    setDate(newDate);
   };
 
+  const toggleModal = () => {
+    setModalVisible(!isModalVisible);
+  };
+
+  const [isFormVisible, setFormVisible] = useState(false);
+  const [formData, setFormData] = useState({
+    firstName: "",
+    lastName: "",
+    phoneNumber: "",
+    address: "",
+    postalCode: "",
+  });
+
+  const [specialRequest, setSpecialRequest] = useState("");
+  const [deliveryInstruction, setDeliveryInstruction] = useState("");
+
+  const handleInputChange = (name: string, value: string) => {
+    const updatedFormData = { ...formData, [name]: value };
+    setFormData(updatedFormData);
+    const isFilled = Object.values(updatedFormData).every(
+      (val) => val.trim() !== ""
+    );
+    setIsFormFilled(isFilled);
+  };
+
+  const toggleForm = () => {
+    setFormVisible(!isFormVisible);
+  };
+
+  const saveForm = () => {
+    setFormVisible(false);
+  };
+
+  const checkConditions = () => {
+    let unmetConditions = [];
+    if (!isOptionSelected) unmetConditions.push("You need to select an option.");
+    if (!date) unmetConditions.push("You need to select a date.");
+    if (!isFormFilled) unmetConditions.push("You need to fill out the form.");
+  
+    if (unmetConditions.length > 0) {
+      Alert.alert("Unmet Conditions", unmetConditions.join("\n"));
+    } else {
+      Alert.alert("All conditions are met.");
+    }
+  };
+  
+
+  const handleCheckout = useCallback((plan: ExportMealPlan) => {
+    const selectedItems = foodItems
+      .flatMap((item) =>
+        item.items?.filter((subItem) => subItem.isSelected).map((subItem) => subItem.name) || []
+      )
+      .filter((item): item is string => item !== undefined);
+
+    const checkoutData = {
+      mealPlanName: plan.name,
+      description: plan.description.join("\n"),
+      price: plan.price,
+      selectedDate: date ? date.toISOString() : null,
+      customerInfo: {
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        phoneNumber: formData.phoneNumber,
+        address: formData.address,
+        postalCode: formData.postalCode,
+      },
+      foodItems: foodItems,
+      selectedItems: selectedItems,
+    };
+
+    navigation.navigate("Checkout", { checkoutData });
+  }, [date, formData, foodItems, navigation]);
+
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <View style={styles.mealPlanHeader}></View>
-      <Text style={styles.subHeader}>Selected Meal Plans:</Text>
+    <ScrollView keyboardShouldPersistTaps="handled">
       {mealPlans.map((plan, index) => (
         <View key={index} style={styles.mealPlanContainer}>
           <Text style={styles.nameText}>{plan.name}</Text>
@@ -503,52 +640,196 @@ function Detail() {
               ?.filter((item) => item.type === FoodItemType.SELECT)
               .map((item, itemIdx) => (
                 <View key={itemIdx} style={styles.optionContainer}>
+                  <View style={styles.lineDivider} />
+
                   <Text style={styles.subHeader}>{item.name} Selections:</Text>
-                  {item.items?.map((subItem, subIdx) => (
-                    <TouchableOpacity
-                      key={subIdx}
-                      style={styles.optionButton}
-                      onPress={() =>
-                        handleRadioGroupOptionChange(item, subItem.name ?? "")
-                      }
-                    >
-                      <View
-                        style={
-                          subItem.isSelected
-                            ? styles.selectedOptionCircle
-                            : styles.optionCircle
-                        }
-                      >
-                        <Text style={{ color: "white" }}>
-                          {subItem.isSelected ? "●" : ""}
-                        </Text>
-                      </View>
-                      <Text style={styles.optionText}>{`${
-                        subItem.quantity ?? ""
-                      } ${subItem.name ?? ""}`}</Text>
-                    </TouchableOpacity>
-                  ))}
+                  <RNPickerSelect
+                    placeholder={{
+                      label: "Select an option...",
+                      value: null,
+                    }}
+                    items={
+                      item.items?.map((subItem) => ({
+                        label: `${subItem.quantity} ${subItem.name}`,
+                        value: subItem.name,
+                      })) || []
+                    }
+                    onValueChange={(value) =>
+                      handleRadioGroupOptionChange(item, value)
+                    }
+                    value={
+                      item.items?.find((subItem) => subItem.isSelected)?.name
+                    }
+                    style={{
+                      inputIOS: {
+                        color: "black",
+                        borderColor: "gray",
+                        paddingTop: 13,
+                        paddingHorizontal: 10,
+                        paddingBottom: 12,
+                      },
+                      inputAndroid: {
+                        color: "black",
+                        borderColor: "gray",
+                      },
+                    }}
+                  />
                 </View>
               ))}
-             {plan.foodItems?.filter(item => item.type === FoodItemType.OPTIONAL).map((item, itemIdx) => (
-              <View key={itemIdx} style={styles.optionContainer}>
-                <CheckBox
-                  value={item.isSelected}
-                  onValueChange={() => toggleOptionalSelection(item)}
-                />
-                <Text style={styles.optionText}>{`${item.quantity} ${item.name} (optional)`}</Text>
-              </View>
-            ))}
           </View>
+          <View style={styles.lineDivider} />
+
+          <TouchableOpacity
+            style={styles.selectDateButton}
+            onPress={toggleModal}
+          >
+            <Text style={styles.selectDateText}>
+              Currently Selected Date:{" "}
+              {date instanceof Date ? format(date, "PPP") : "Invalid date"}
+            </Text>
+          </TouchableOpacity>
+
+          <Modal
+            animationType="slide"
+            transparent={true}
+            visible={isModalVisible}
+            onRequestClose={toggleModal}
+          >
+            <View style={styles.modalView}>
+              <CalendarPicker
+                startFromMonday={true}
+                allowRangeSelection={false}
+                minDate={startDate}
+                maxDate={endDate}
+                todayBackgroundColor="#f2e6ff"
+                selectedDayColor="#7300e6"
+                selectedDayTextColor="#FFFFFF"
+                onDateChange={handleDateChange}
+                disabledDates={(date) => isSunday(new Date(date))}
+                textStyle={{
+                  color: "#000000",
+                }}
+                headingLevel={1}
+              />
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-around",
+                  padding: 20,
+                }}
+              >
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: "#4CAF50",
+                    padding: 10,
+                    borderRadius: 5,
+                  }}
+                  onPress={toggleModal}
+                >
+                  <Text style={{ color: "white", fontSize: 16 }}>OK</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: "#F44336",
+                    padding: 10,
+                    borderRadius: 5,
+                  }}
+                  onPress={() => setModalVisible(false)}
+                >
+                  <Text style={{ color: "white", fontSize: 16 }}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Modal>
+          <View style={styles.lineDivider} />
+
+          <View style={styles.showFormButtonContainer}>
+            <TouchableOpacity
+              onPress={toggleForm}
+              style={styles.showFormButton}
+            >
+              <Text style={styles.showFormButtonText}>
+                {isFormVisible ? "Hide Form" : "Show Form"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {isFormVisible && (
+            <View>
+              <TextInput
+                style={{ height: 40, borderColor: "gray", borderWidth: 1 }}
+                placeholder="First Name"
+                onChangeText={(text) => handleInputChange("firstName", text)}
+              />
+              <TextInput
+                style={{ height: 40, borderColor: "gray", borderWidth: 1 }}
+                placeholder="Last Name"
+                onChangeText={(text) => handleInputChange("lastName", text)}
+              />
+              <TextInput
+                style={{ height: 40, borderColor: "gray", borderWidth: 1 }}
+                placeholder="Phone Number"
+                onChangeText={(text) => handleInputChange("phoneNumber", text)}
+              />
+              <TextInput
+                style={{ height: 40, borderColor: "gray", borderWidth: 1 }}
+                placeholder="Address"
+                onChangeText={(text) => handleInputChange("address", text)}
+              />
+              <TextInput
+                style={{ height: 40, borderColor: "gray", borderWidth: 1 }}
+                placeholder="Postal Code"
+                onChangeText={(text) => handleInputChange("postalCode", text)}
+              />
+              <TouchableOpacity
+                style={styles.saveButton}
+                onPress={saveForm}
+              >
+                <Text style={styles.saveButtonText}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          <Text style={styles.subHeader}>Special Requests</Text>
+          <TextInput
+            style={styles.specialRequestInput}
+            placeholder="Please list any dietary restrictions or food allergies here, e.g. gluten intolerance, lactose intolerance, peanut allergies."
+            onChangeText={(text) => setSpecialRequest(text)}
+            multiline
+          />
+
+          <Text style={styles.subHeader}>Delivery Instructions</Text>
+          <TextInput
+            style={styles.deliveryInstructionInput}
+            placeholder="Please provide a ground-level drop-off location, such as a lobby or reception as we cannot deliver to upper floors in apartments/condos."
+            onChangeText={(text) => setDeliveryInstruction(text)}
+            multiline
+          />
+
+          <TouchableOpacity
+            style={[
+              styles.checkoutButton,
+              {
+                backgroundColor:
+                  isOptionSelected && date && isFormFilled ? "#FE7F00" : "grey",
+              },
+            ]}
+            onPress={() => handleCheckout(plan)}
+          >
+            <Text style={styles.checkoutButtonText}>Go to Checkout</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.checkoutButton,
+              { backgroundColor: "#FE7F00", marginTop: 10 },
+            ]}
+            onPress={checkConditions}
+          >
+            <Text style={styles.checkoutButtonText}>Check Conditions</Text>
+          </TouchableOpacity>
         </View>
       ))}
-      <TouchableOpacity
-        style={styles.checkoutButton}
-        onPress={() => navigation.navigate("Checkout")}
-      >
-        <Text style={styles.checkoutButtonText}>Go to Checkout</Text>
-      </TouchableOpacity>
     </ScrollView>
   );
 }
+
 export default Detail;

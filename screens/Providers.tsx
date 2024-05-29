@@ -22,10 +22,8 @@ function Provider() {
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
 
   useEffect(() => {
-    console.log("Fetching providers...");
     fetchAllProviders()
       .then((providersData) => {
-        console.log("Providers fetched:", providersData);
         setProviders(providersData);
       })
       .catch((error) => {
