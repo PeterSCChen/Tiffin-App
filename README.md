@@ -1,4 +1,4 @@
-# TM-App
+# Tiffin-App
 
 Mobile application for Tiffin to make purchase and subscriptions.
 ## Commands
